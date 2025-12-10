@@ -13,6 +13,13 @@ connectDB();
 
 
 /*********** Start The Server ***********/
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port: ${PORT} in ${environment} mode`);
-});
+
+if (environment === "development") {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port: ${PORT} in ${environment} mode`);
+  });
+}
+
+
+
+export default app;
