@@ -1,6 +1,17 @@
 import mystripe from "../../config/stripe.js";
 import CheckoutSession from "../../models/CheckoutSession.js";
 
+
+
+// Helper to convert Unix timestamp to Date
+const toDate = (timestamp) => timestamp ? new Date(timestamp * 1000) : null;
+
+// Helper to determine if premium
+const isPremiumStatus = (status) => ['active', 'trialing'].includes(status);
+
+
+
+
 const stripewebhookController = async (req, res) => {
 
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -21,15 +32,40 @@ const stripewebhookController = async (req, res) => {
         if (event.type === 'checkout.session.completed') {
             const session = event.data.object;
 
+
+            console.log("checkout.session.completed");
+            console.log(session);
+            console.log("checkout.session.completed end");
+
+
+            let subscriptionData = null;
+            if (session.subscription) {
+                subscriptionData = await mystripe.subscriptions.retrieve(session.subscription);
+            }
+
+
+
             await CheckoutSession.findOneAndUpdate(
                 { sessionId: session.id },
                 {
-                    status: "paid",
+                    userId: session.metadata?.userId,
+                    status: subscriptionData?.status || "incomplete",
+                    customerId: session.customer,
+                    isPremium: isPremiumStatus(subscriptionData?.status),
+                    subscriptionId: session.subscription || null,
                     paymentIntentId: session.payment_intent,
                     customerEmail: session.customer_details?.email,
                     paymentMethod: session.payment_method_types?.[0],
-                    subscriptionId: session.subscription || null
-                }
+                    subscriptionId: session.subscription || null,
+                    currency: session.currency,
+                    priceId: subscriptionData?.items?.data?.[0]?.price?.id || null,
+                    trialStart: toDate(subscriptionData?.trial_start),
+                    trialEnd: toDate(subscriptionData?.trial_end),
+                    currentPeriodStart: toDate(subscriptionData?.current_period_start),
+                    currentPeriodEnd: toDate(subscriptionData?.current_period_end),
+
+                },
+                { new: true }
             );
         }
 
@@ -39,27 +75,78 @@ const stripewebhookController = async (req, res) => {
         if (event.type === "customer.subscription.created") {
             const subscription = event.data.object;
 
+
+            console.log("customer.subscription.created");
+            console.log(subscription);
+            console.log("customer.subscription.created end");
+
+
             await CheckoutSession.findOneAndUpdate(
                 { subscriptionId: subscription.id },
                 {
-                    status: "active"
-                }
+                    status: subscription.status,
+                    priceId: subscription.items.data[0].price.id,
+                    trialStart: toDate(subscription.trial_start),
+                    trialEnd: toDate(subscription.trial_end),
+                    currentPeriodStart: toDate(subscription.current_period_start),
+                    currentPeriodEnd: toDate(subscription.current_period_end),
+                    isPremium: isPremiumStatus(subscription.status),
+                },
+                { new: true }
+
             );
         }
+
+
+
+        // ---------------------------
+        // In customer.subscription.updated (add this event)
+        // ---------------------------
+        if (event.type === "customer.subscription.updated") {
+            const subscription = event.data.object;
+
+            console.log("customer.subscription.updated");
+            console.log(subscription);
+            console.log("customer.subscription.updated");
+
+            await CheckoutSession.findOneAndUpdate(
+                { subscriptionId: subscription.id },
+                {
+                    status: subscription.status,
+                    isPremium: isPremiumStatus(subscription.status),
+                    cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+                    canceledAt: toDate(subscription.canceled_at),
+                    currentPeriodStart: toDate(subscription.current_period_start),
+                    currentPeriodEnd: toDate(subscription.current_period_end),
+                },
+                { new: true }
+            );
+        }
+
+
+
 
         // ---------------------------
         // SUBSCRIPTION RENEWED / PAID
         // ---------------------------
-        if (event.type === "invoice.paid") {
+        if (event.type === "invoice.payment_succeeded") {
             const invoice = event.data.object;
 
-            await CheckoutSession.findOneAndUpdate(
-                { subscriptionId: invoice.subscription },
-                {
-                    status: "active",
-                    lastPaymentAt: new Date()
-                }
-            );
+            if (invoice.billing_reason === "subscription_cycle" || invoice.billing_reason === "subscription_create") {
+                await CheckoutSession.findOneAndUpdate(
+                    { subscriptionId: invoice.id },
+                    {
+                        status: "active",
+                        isPremium: true,
+                        lastInvoiceId: invoice.id,
+                        lastInvoiceStatus: "paid",  // ✅ Invoice status can be "paid"
+                        lastPaymentAt: new Date(),
+                        currentPeriodStart: toDate(invoice.lines?.data?.[0]?.period?.start),
+                        currentPeriodEnd: toDate(invoice.lines?.data?.[0]?.period?.end),
+                    },
+                    { new: true }
+                );
+            }
         }
 
         // ---------------------------
@@ -71,8 +158,11 @@ const stripewebhookController = async (req, res) => {
             await CheckoutSession.findOneAndUpdate(
                 { subscriptionId: subscription.id },
                 {
-                    status: "canceled"
-                }
+                    status: "canceled",
+                    isPremium: false,
+                    canceledAt: toDate(subscription.canceled_at),
+                },
+                { new: true }
             );
         }
 
@@ -85,8 +175,12 @@ const stripewebhookController = async (req, res) => {
             await CheckoutSession.findOneAndUpdate(
                 { subscriptionId: invoice.subscription },
                 {
-                    status: "payment_failed"
-                }
+                    status: "past_due",
+                    lastInvoiceId: invoice.id,
+                    lastInvoiceStatus: "failed",
+                    isPremium: false
+                },
+                { new: true }
             );
         }
 

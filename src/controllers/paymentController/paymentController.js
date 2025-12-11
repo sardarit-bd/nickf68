@@ -1,17 +1,26 @@
 import mystripe from "../../config/stripe.js";
 import CheckoutSession from "../../models/CheckoutSession.js";
-import toCents from "../../utils/toCents.js";
+
+
+//define PRICE_ID here
+const PRICE_IDS = {
+    usd: "price_1Sd1KOKQHLxj7tSpz1tFBihh",
+    eur: "price_1Sd1MPKQHLxj7tSpEqlLMwAz",
+    gbp: "price_1Sd1MrKQHLxj7tSp9OU003t4",
+};
+
+
 
 const checkoutSessionController = async (req, res) => {
 
-    const origin = req.headers.origin || "http://localhost:4242";
+    const origin = req.headers.origin || process.env.CLIENT_URL;
 
     try {
 
 
 
         // destructure the body data here
-        const { userId, email, currency = "usd", } = req.body;
+        const { userId, email, currency = "usd" } = req.body;
 
 
         //validate the data here
@@ -21,37 +30,58 @@ const checkoutSessionController = async (req, res) => {
 
 
 
-        //define prices currency here
-        const products = [
-            { name: "CoreTrak Premium", currency: "usd", price: "12.99" },
-            { name: "CoreTrak Premium", currency: "eur", price: "10.99" },
-            { name: "CoreTrak Premium", currency: "gbp", price: "9.99" },
-        ];
-
-
-        // currency matching here
-        const currencyMatching = products?.filter((item) => {
-            return item.currency === currency;
+        // 1. Check if this user already has a Stripe Customer
+        let customer = await mystripe.customers.list({
+            email: email,
+            limit: 1
         });
 
 
 
-        //create checkout session here
+        let stripeCustomerId;
+
+
+        if (customer.data.length > 0) {
+            stripeCustomerId = customer.data[0].id; // reuse
+        } else {
+            const newCustomer = await mystripe.customers.create({
+                email,
+                metadata: { userId }
+            });
+            stripeCustomerId = newCustomer.id;
+        }
+
+
+
+
+        // 2. Create subscription checkout session
         const session = await mystripe.checkout.sessions.create({
-            payment_method_types: ['card'],
+            mode: "subscription",
+            payment_method_types: ["card"],
+            customer: stripeCustomerId,
             line_items: [
                 {
-                    price_data: {
-                        currency: currencyMatching[0].currency,        // now you define currency here
-                        unit_amount: toCents(currencyMatching[0].price),      // amount in cents
-                        product_data: { name: currencyMatching[0].name },
-                    },
+                    price: PRICE_IDS[currency], // Subscription price ID
                     quantity: 1
                 }
             ],
-            mode: 'payment',
-            success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${origin}/cancel`,
+
+
+            // IMPORTANT: trial with card required
+            subscription_data: {
+                trial_period_days: 7,
+            },
+
+            // Payment collection to ensure card is required before trial
+            payment_method_collection: "always",
+
+
+            success_url: `${origin}/premium/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${origin}/premium/cancel`,
+            metadata: {
+                userId,
+                currency
+            }
         });
 
 
@@ -59,9 +89,8 @@ const checkoutSessionController = async (req, res) => {
         //store data in database here
         await CheckoutSession.create({
             sessionId: session.id,
-            amount: toCents(currencyMatching[0].price),
-            currency: currencyMatching[0].currency,
-            productName: currencyMatching[0].name,
+            currency,
+            userId,
             quantity: 1,
             status: "pending",
             rawResponse: session

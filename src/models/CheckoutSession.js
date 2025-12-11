@@ -2,23 +2,36 @@ import mongoose from "mongoose";
 
 const CheckoutSessionSchema = new mongoose.Schema(
     {
+        // Checkout Session ID from Stripe
         sessionId: {
             type: String,
             required: true,
             unique: true,
         },
 
-        amount: {
-            type: Number,
-            required: true,
-        },
-
-        currency: {
+        // Local user ID (your user)
+        userId: {
             type: String,
-            required: true,
+            required: true
         },
 
-        productName: {
+        // Stripe Customer
+        customerId: {
+            type: String, // cus_xxx
+        },
+
+        // Stripe Subscription
+        subscriptionId: {
+            type: String, // sub_xxx
+        },
+
+        // Monthly plan price id
+        priceId: {
+            type: String, // price_xxx
+        },
+
+        // Currency
+        currency: {
             type: String,
             required: true,
         },
@@ -28,44 +41,57 @@ const CheckoutSessionSchema = new mongoose.Schema(
             default: 1,
         },
 
-        // IMPORTANT: new status values for subscription handling
+        // ==========================
+        //   SUBSCRIPTION STATUS
+        // ==========================
         status: {
             type: String,
             enum: [
-                "pending",
-                "paid",
-                "active",         // <-- subscription running
-                "canceled",       // <-- subscription cancelled
-                "payment_failed"  // <-- renewal failed
+                "pending",        // checkout created
+                "trialing",       // 7-day trial
+                "active",         // subscription running
+                "past_due",       // payment failed
+                "canceled",       // user canceled
+                "unpaid"          // Stripe failed to collect payment
             ],
             default: "pending",
         },
 
-        customerEmail: {
-            type: String,
+        // ==========================
+        //   SUBSCRIPTION PERIODS
+        // ==========================
+        trialStart: Number,
+        trialEnd: Number,
+
+        currentPeriodStart: Number,
+        currentPeriodEnd: Number,
+
+        cancelAtPeriodEnd: Boolean,
+        canceledAt: Number,
+
+        // ==========================
+        //   PAYMENT INFO
+        // ==========================
+        customerEmail: String,
+
+        paymentIntentId: String,
+        paymentMethod: String,
+
+        lastInvoiceId: String,
+        lastInvoiceStatus: String,
+
+        isPremium: {
+            type: Boolean,
+            default: false
         },
 
-        paymentIntentId: {
-            type: String,
-        },
-
-        paymentMethod: {
-            type: String,
-        },
-
-        // NEW FIELD: Subscription ID
-        subscriptionId: {
-            type: String,
-        },
-
-        // NEW FIELD: last successful renewal
+        // last successful payment time
         lastPaymentAt: {
             type: Date,
         },
 
-        rawResponse: {
-            type: Object,
-        },
+        // Store full Stripe event for debugging
+        rawResponse: Object,
     },
     { timestamps: true }
 );
