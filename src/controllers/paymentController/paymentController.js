@@ -55,7 +55,7 @@ const checkoutSessionController = async (req, res) => {
                 limit: 1,
             });
 
-            const thisuserStatus = subs.data[0].status;
+            const thisuserStatus = subs?.data?.[0]?.status;
 
             if (subs.data.length > 0) {
                 // customer already used trial before
