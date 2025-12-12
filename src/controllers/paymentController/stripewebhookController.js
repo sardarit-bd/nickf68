@@ -33,11 +33,6 @@ const stripewebhookController = async (req, res) => {
             const session = event.data.object;
 
 
-            console.log("checkout.session.completed");
-            console.log(session);
-            console.log("checkout.session.completed end");
-
-
             let subscriptionData = null;
             if (session.subscription) {
                 subscriptionData = await mystripe.subscriptions.retrieve(session.subscription);
@@ -56,7 +51,6 @@ const stripewebhookController = async (req, res) => {
                     paymentIntentId: session.payment_intent,
                     customerEmail: session.customer_details?.email,
                     paymentMethod: session.payment_method_types?.[0],
-                    subscriptionId: session.subscription || null,
                     currency: session.currency,
                     priceId: subscriptionData?.items?.data?.[0]?.price?.id || null,
                     trialStart: toDate(subscriptionData?.trial_start),
@@ -74,11 +68,6 @@ const stripewebhookController = async (req, res) => {
         // ---------------------------
         if (event.type === "customer.subscription.created") {
             const subscription = event.data.object;
-
-
-            console.log("customer.subscription.created");
-            console.log(subscription);
-            console.log("customer.subscription.created end");
 
 
             await CheckoutSession.findOneAndUpdate(
@@ -105,9 +94,6 @@ const stripewebhookController = async (req, res) => {
         if (event.type === "customer.subscription.updated") {
             const subscription = event.data.object;
 
-            console.log("customer.subscription.updated");
-            console.log(subscription);
-            console.log("customer.subscription.updated");
 
             await CheckoutSession.findOneAndUpdate(
                 { subscriptionId: subscription.id },
@@ -132,20 +118,55 @@ const stripewebhookController = async (req, res) => {
         if (event.type === "invoice.payment_succeeded") {
             const invoice = event.data.object;
 
+
             if (invoice.billing_reason === "subscription_cycle" || invoice.billing_reason === "subscription_create") {
-                await CheckoutSession.findOneAndUpdate(
-                    { subscriptionId: invoice.id },
-                    {
-                        status: "active",
-                        isPremium: true,
-                        lastInvoiceId: invoice.id,
-                        lastInvoiceStatus: "paid",  // ✅ Invoice status can be "paid"
-                        lastPaymentAt: new Date(),
-                        currentPeriodStart: toDate(invoice.lines?.data?.[0]?.period?.start),
-                        currentPeriodEnd: toDate(invoice.lines?.data?.[0]?.period?.end),
-                    },
-                    { new: true }
-                );
+
+
+                const subID = invoice?.parent?.subscription_details?.subscription;
+
+
+                // Fetch the actual subscription to check its status
+                const subscription = await mystripe.subscriptions.retrieve(subID);
+
+
+                // Check if this is a $0 trial invoice
+                const isTrialInvoice = invoice.amount_paid === 0 && subscription.status === "trialing";
+
+
+                if (isTrialInvoice) {
+
+                    await CheckoutSession.findOneAndUpdate(
+                        { subscriptionId: subID },
+                        {
+                            status: subscription?.status, // Use actual subscription status
+                            isPremium: isPremiumStatus(subscription.status),
+                            lastInvoiceId: invoice.id,
+                            lastInvoiceStatus: "paid",  // ✅ Invoice status can be "paid"
+                        },
+                        { new: true }
+                    );
+
+
+                } else {
+
+
+                    await CheckoutSession.findOneAndUpdate(
+                        { subscriptionId: subID },
+                        {
+                            status: subscription?.status, // Use actual subscription status
+                            isPremium: isPremiumStatus(subscription.status),
+                            lastInvoiceId: invoice.id,
+                            lastInvoiceStatus: "paid",  // ✅ Invoice status can be "paid"
+                            lastPaymentAt: new Date(),
+                            currentPeriodStart: toDate(invoice.lines?.data?.[0]?.period?.start),
+                            currentPeriodEnd: toDate(invoice.lines?.data?.[0]?.period?.end),
+                        },
+                        { new: true }
+                    );
+
+
+                }
+
             }
         }
 
@@ -154,6 +175,7 @@ const stripewebhookController = async (req, res) => {
         // ---------------------------
         if (event.type === "customer.subscription.deleted") {
             const subscription = event.data.object;
+
 
             await CheckoutSession.findOneAndUpdate(
                 { subscriptionId: subscription.id },
@@ -171,6 +193,7 @@ const stripewebhookController = async (req, res) => {
         // ---------------------------
         if (event.type === "invoice.payment_failed") {
             const invoice = event.data.object;
+
 
             await CheckoutSession.findOneAndUpdate(
                 { subscriptionId: invoice.subscription },

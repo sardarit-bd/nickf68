@@ -29,6 +29,10 @@ const checkoutSessionController = async (req, res) => {
         }
 
 
+        // CREATE IDEMPOTENCY KEY This ensures duplicate requests within a short time window don't create multiple sessions
+        const idempotencyKey = `checkout_${userId}_${currency}_${Date.now()}`;
+
+
 
         // 1. Check if this user already has a Stripe Customer
         let customer = await mystripe.customers.list({
@@ -37,10 +41,34 @@ const checkoutSessionController = async (req, res) => {
         });
 
 
-
+        // make customer object
+        let iscustomer = customer.data[0];
         let stripeCustomerId;
 
 
+
+        // check if user already used trial
+        if (iscustomer) {
+            const subs = await mystripe.subscriptions.list({
+                customer: iscustomer.id,
+                status: 'all',
+                limit: 1,
+            });
+
+            const thisuserStatus = subs.data[0].status;
+
+            if (subs.data.length > 0) {
+                // customer already used trial before
+                return res.json({
+                    message: thisuserStatus == "active" ? "This user already has a subscription." : "User already used trial. No free trial available.",
+                    allowTrial: false
+                });
+            }
+        }
+
+
+
+        // check if user already has a customer
         if (customer.data.length > 0) {
             stripeCustomerId = customer.data[0].id; // reuse
         } else {
@@ -82,6 +110,8 @@ const checkoutSessionController = async (req, res) => {
                 userId,
                 currency
             }
+        }, {
+            idempotencyKey: idempotencyKey
         });
 
 
@@ -92,7 +122,6 @@ const checkoutSessionController = async (req, res) => {
             currency,
             userId,
             quantity: 1,
-            status: "pending",
             rawResponse: session
         });
 
