@@ -4,9 +4,9 @@ import CheckoutSession from "../../models/CheckoutSession.js";
 
 //define PRICE_ID here
 const PRICE_IDS = {
-    usd: "price_1Sd1KOKQHLxj7tSpz1tFBihh",
-    eur: "price_1Sd1MPKQHLxj7tSpEqlLMwAz",
-    gbp: "price_1Sd1MrKQHLxj7tSp9OU003t4",
+    usd: process.env.STRIPE_USD_PRICE_ID,
+    eur: process.env.STRIPE_EUR_PRICE_ID,
+    gbp: process.env.STRIPE_GBP_PRICE_ID,
 };
 
 
@@ -102,6 +102,16 @@ const checkoutSessionController = async (req, res) => {
 
             // Payment collection to ensure card is required before trial
             payment_method_collection: "always",
+
+
+
+
+            // user can enter promo code
+            allow_promotion_codes: true,
+
+            // optional: pre-applied discount
+            // discounts: [{ coupon: "coupon_xxx" }],
+
 
 
             success_url: `${origin}/premium/success?session_id={CHECKOUT_SESSION_ID}`,
