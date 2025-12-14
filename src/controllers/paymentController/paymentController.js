@@ -57,7 +57,7 @@ const checkoutSessionController = async (req, res) => {
 
             const thisuserStatus = subs?.data?.[0]?.status;
 
-            if (subs.data.length > 0) {
+            if (thisuserStatus == "active" || thisuserStatus == "trialing") {
                 // customer already used trial before
                 return res.json({
                     message: thisuserStatus == "active" ? "This user already has a subscription." : "User already used trial. No free trial available.",

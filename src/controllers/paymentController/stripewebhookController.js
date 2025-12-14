@@ -121,10 +121,6 @@ const stripewebhookController = async (req, res) => {
             const invoice = event.data.object;
 
 
-            console.log('check this invoice');
-            console.log(invoice);
-
-
             if (invoice.billing_reason === "subscription_cycle" || invoice.billing_reason === "subscription_create") {
 
 
