@@ -55,8 +55,8 @@ const stripewebhookController = async (req, res) => {
                     priceId: subscriptionData?.items?.data?.[0]?.price?.id || null,
                     trialStart: toDate(subscriptionData?.trial_start),
                     trialEnd: toDate(subscriptionData?.trial_end),
-                    currentPeriodStart: toDate(subscriptionData?.current_period_start),
-                    currentPeriodEnd: toDate(subscriptionData?.current_period_end),
+                    currentPeriodStart: toDate(subscriptionData?.items?.data?.[0]?.current_period_start),
+                    currentPeriodEnd: toDate(subscriptionData?.items?.data?.[0]?.current_period_end),
 
                 },
                 { new: true }
@@ -75,10 +75,11 @@ const stripewebhookController = async (req, res) => {
                 {
                     status: subscription.status,
                     priceId: subscription.items.data[0].price.id,
+                    customerId: subscription.customer,
                     trialStart: toDate(subscription.trial_start),
                     trialEnd: toDate(subscription.trial_end),
-                    currentPeriodStart: toDate(subscription.current_period_start),
-                    currentPeriodEnd: toDate(subscription.current_period_end),
+                    currentPeriodStart: toDate(subscription.items.data[0].current_period_start),
+                    currentPeriodEnd: toDate(subscription.items.data[0].current_period_end),
                     isPremium: isPremiumStatus(subscription.status),
                 },
                 { new: true }
@@ -100,10 +101,11 @@ const stripewebhookController = async (req, res) => {
                 {
                     status: subscription.status,
                     isPremium: isPremiumStatus(subscription.status),
+                    customerId: subscription.customer,
                     cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
                     canceledAt: toDate(subscription.canceled_at),
-                    currentPeriodStart: toDate(subscription.current_period_start),
-                    currentPeriodEnd: toDate(subscription.current_period_end),
+                    currentPeriodStart: toDate(subscription.items.data[0].current_period_start),
+                    currentPeriodEnd: toDate(subscription.items.data[0].current_period_end),
                 },
                 { new: true }
             );
@@ -117,6 +119,10 @@ const stripewebhookController = async (req, res) => {
         // ---------------------------
         if (event.type === "invoice.payment_succeeded") {
             const invoice = event.data.object;
+
+
+            console.log('check this invoice');
+            console.log(invoice);
 
 
             if (invoice.billing_reason === "subscription_cycle" || invoice.billing_reason === "subscription_create") {
@@ -158,8 +164,8 @@ const stripewebhookController = async (req, res) => {
                             lastInvoiceId: invoice.id,
                             lastInvoiceStatus: "paid",  // ✅ Invoice status can be "paid"
                             lastPaymentAt: new Date(),
-                            currentPeriodStart: toDate(invoice.lines?.data?.[0]?.period?.start),
-                            currentPeriodEnd: toDate(invoice.lines?.data?.[0]?.period?.end),
+                            currentPeriodStart: toDate(invoice.period_start),
+                            currentPeriodEnd: toDate(invoice.period_end),
                         },
                         { new: true }
                     );
