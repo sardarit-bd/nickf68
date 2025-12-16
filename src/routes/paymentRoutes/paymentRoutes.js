@@ -1,6 +1,7 @@
 import express from "express";
-import checkoutSessionController from "../../controllers/paymentController/paymentController.js";
 import customerPortalController from "../../controllers/paymentController/customerPortalController.js";
+import checkoutSessionController from "../../controllers/paymentController/paymentController.js";
+import subscriptionController from "../../controllers/paymentController/subscriptionController.js";
 
 const router = express.Router();
 
@@ -9,6 +10,11 @@ router.post("/create-checkout-session", checkoutSessionController);
 
 
 //portal route defind here
-router.get("/portal", customerPortalController);
+router.post("/portal", customerPortalController);
+
+
+//subscription route defind here
+router.post("/subscription", subscriptionController);
+
 
 export default router;

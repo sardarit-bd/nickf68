@@ -1,15 +1,8 @@
 import mystripe from "../../config/stripe.js";
 import CheckoutSession from "../../models/CheckoutSession.js";
-
-
-
-// Helper to convert Unix timestamp to Date
-const toDate = (timestamp) => timestamp ? new Date(timestamp * 1000) : null;
-
-// Helper to determine if premium
-const isPremiumStatus = (status) => ['active', 'trialing'].includes(status);
-
-
+import ProcessedWebhookEvent from "../../models/ProcessedWebhookEvent.js";
+import isPremiumStatus from "../../utils/isPremiumStatus.js";
+import toDate from "../../utils/toDate.js";
 
 
 const stripewebhookController = async (req, res) => {
@@ -19,11 +12,35 @@ const stripewebhookController = async (req, res) => {
 
     try {
 
+
+        //webhook event here
         const event = mystripe.webhooks.constructEvent(
             req.body,
             req.headers['stripe-signature'],
             webhookSecret
         );
+
+
+
+
+        // CHECK: Has this event.id been processed before?
+        const alreadyProcessed = await ProcessedWebhookEvent.findOne({
+            eventId: event.id
+        });
+
+        if (alreadyProcessed) {
+            console.log(`Ignoring duplicate event: ${event.id}`);
+            return res.json({ received: true, processed: true }); // Don't process twice!
+        }
+
+        // MARK as processed BEFORE doing anything
+        await ProcessedWebhookEvent.create({
+            eventId: event.id,
+            eventType: event.type
+        });
+
+
+
 
 
         // ---------------------------
